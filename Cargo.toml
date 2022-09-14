@@ -1,0 +1,18 @@
+[package]
+name = "noita-discord-bridge"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+env_logger = "0.9.0"
+futures = "0.3.24"
+irc-proto = "0.15.0"
+log = "0.4.17"
+memorable-wordlist = "0.1.7"
+poise = "0.3.0"
+rand = "0.8.5"
+tokio = { version = "1.21.1", features = ["full"] }
+tokio-stream = "0.1.9"
+tokio-util = { version = "0.7.4", features = ["codec"] }
