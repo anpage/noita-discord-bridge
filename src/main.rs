@@ -6,7 +6,7 @@ use irc_proto::{Command, Message};
 use log::{debug, error, info};
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use rand::seq::SliceRandom;
-use tokio::io;
+use tokio::io::{self, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 use tokio_stream::StreamExt;
@@ -21,9 +21,16 @@ struct Data {
 
 #[derive(Clone, Debug)]
 struct UserMessage {
+    /// Username of message sender
     name: String,
+    /// Content of message
     message: String,
+    /// Channel to send the message to
     channel: String,
+    /// Should the TCP connection be severed?
+    ///
+    /// This could probably be less hacky.
+    disconnect: bool,
 }
 
 #[tokio::main]
@@ -57,6 +64,7 @@ async fn main() -> io::Result<()> {
                                     name: new_message.author.name.clone(),
                                     message: new_message.content.clone(),
                                     channel: c.clone(),
+                                    disconnect: false,
                                 };
                                 debug!("Sending message: {:?}", msg);
                                 if let Err(e) = data.tx.send(msg) {
@@ -135,7 +143,7 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
                     .to_string();
             }
             debug!("Decided on channel {}", channel);
-            channels.insert(channel_id, format!("#{}", channel.to_string()));
+            channels.insert(channel_id, channel.to_string());
         }
     }
 
@@ -160,6 +168,12 @@ async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
     if let Some(c) = deleted {
         ctx.say(format!("Noita streaming channel `{}` deleted.", c))
             .await?;
+        ctx.data().tx.send(UserMessage {
+            name: "".to_string(),
+            message: "".to_string(),
+            channel: c,
+            disconnect: true,
+        })?;
     } else {
         ctx.say("There isn't currently a Noita streaming channel to stop.")
             .await?;
@@ -182,9 +196,14 @@ async fn process_socket(
         tokio::select! {
         Ok(msg) = rx.recv() => {
             debug!("Message received");
-            if msg.channel == channel {
+            if format!("#{}", msg.channel) == channel {
+                if msg.disconnect {
+                    debug!("Killing connection for channel {channel}.");
+                    irc_stream.into_inner().shutdown().await.unwrap();
+                    break;
+                }
                 debug!("Message is for this channel.");
-                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG {} :{}\r\n", msg.name, msg.channel, msg.message)).await;
+                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG {} :{}\r\n", msg.name, channel, msg.message)).await;
             }
         }
         result = irc_stream.next() => match result {
@@ -200,7 +219,7 @@ async fn process_socket(
                                 }
                             },
                             Command::JOIN(chan, ..) => {
-                                if channels.lock().unwrap().values().any(|c| *c == chan) {
+                                if channels.lock().unwrap().values().any(|c| format!("#{c}") == chan) {
                                     channel = chan;
                                     if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN {channel}\r\n:{username}.tmi.twitch.tv 353 {username} = {channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} {channel} :End of /NAMES list\r\n")).await {
                                         error!("error on sending response; error = {:?}", e);
