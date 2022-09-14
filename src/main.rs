@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use futures::SinkExt;
 use irc_proto::{Command, Message};
@@ -15,7 +15,7 @@ use tokio_util::codec::{Framed, LinesCodec};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 struct Data {
-    channels: Mutex<HashMap<ChannelId, String>>,
+    channels: Arc<Mutex<HashMap<ChannelId, String>>>,
     tx: Sender<UserMessage>,
 }
 
@@ -35,6 +35,9 @@ async fn main() -> io::Result<()> {
     let tx_discord = tx.clone();
 
     info!("Listening for connections...");
+
+    let channels = Arc::new(Mutex::new(HashMap::new()));
+    let channels_discord = channels.clone();
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -75,7 +78,7 @@ async fn main() -> io::Result<()> {
         .user_data_setup(move |_ctx, _ready, _framework| {
             Box::pin(async move {
                 Ok(Data {
-                    channels: Mutex::new(HashMap::new()),
+                    channels: channels_discord,
                     tx: tx_discord,
                 })
             })
@@ -87,7 +90,7 @@ async fn main() -> io::Result<()> {
                 match listener.accept().await {
                     Ok((socket, addr)) => {
                         info!("New connection from {}", addr);
-                        tokio::spawn(process_socket(socket, tx.subscribe()));
+                        tokio::spawn(process_socket(socket, tx.subscribe(), channels.clone()));
                     }
                     Err(e) => {
                         error!("Couldn't accept TCP connection: \n{}", e);
@@ -132,7 +135,7 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
                     .to_string();
             }
             debug!("Decided on channel {}", channel);
-            channels.insert(channel_id, channel.to_string());
+            channels.insert(channel_id, format!("#{}", channel.to_string()));
         }
     }
 
@@ -166,7 +169,11 @@ async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Handler for incoming TCP/IRC connections from Noita. It implements the bare
 /// minimum to fool Noita into thinking that it's connected to Twitch chat.
-async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>) {
+async fn process_socket(
+    socket: TcpStream,
+    mut rx: Receiver<UserMessage>,
+    channels: Arc<Mutex<HashMap<ChannelId, String>>>,
+) {
     let mut irc_stream = Framed::new(socket, LinesCodec::new());
     let mut username = "bar".to_string();
     let mut channel = "#foo".to_string();
@@ -175,9 +182,9 @@ async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>) {
         tokio::select! {
         Ok(msg) = rx.recv() => {
             debug!("Message received");
-            if format!("#{}", msg.channel) == channel {
+            if msg.channel == channel {
                 debug!("Message is for this channel.");
-                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG {} :{}\r\n", msg.name, channel, msg.message)).await;
+                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG {} :{}\r\n", msg.name, msg.channel, msg.message)).await;
             }
         }
         result = irc_stream.next() => match result {
@@ -193,9 +200,15 @@ async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>) {
                                 }
                             },
                             Command::JOIN(chan, ..) => {
-                                channel = chan;
-                                if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN {channel}\r\n:{username}.tmi.twitch.tv 353 {username} = {channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} {channel} :End of /NAMES list\r\n")).await {
-                                    error!("error on sending response; error = {:?}", e);
+                                if channels.lock().unwrap().values().any(|c| *c == chan) {
+                                    channel = chan;
+                                    if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN {channel}\r\n:{username}.tmi.twitch.tv 353 {username} = {channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} {channel} :End of /NAMES list\r\n")).await {
+                                        error!("error on sending response; error = {:?}", e);
+                                    }
+                                } else {
+                                    if let Err(e) = irc_stream.send(format!(":.tmi.twitch.tv NOTICE {channel} :Channel doesn't exist\r\n")).await {
+                                        error!("error on sending response; error = {:?}", e);
+                                    }
                                 }
                             },
                             _ => {
