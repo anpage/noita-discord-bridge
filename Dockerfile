@@ -6,6 +6,6 @@ COPY . .
 RUN cargo install --path .
 
 FROM docker.io/alpine:3.16
-COPY --from=builder /usr/local/cargo/bin/noita-discord-bridge /usr/local/bin/ndb
+COPY --from=builder /usr/local/cargo/bin/noita_discord_bridge /usr/local/bin/ndb
 EXPOSE 6667
 CMD ["ndb"]
