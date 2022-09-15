@@ -113,9 +113,11 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-/// Command to instruct the bot to stop listening to messages in a channel.
+/// Command to instruct the bot to assign a "channel name" to this Discord channel,
+/// which must be typed into Noita's Twitch channel name to connect.
 ///
-/// This frees up the Noita channel name as well.
+/// While this "channel name" is active, all messages in this Discord channel are
+/// passed to the associated Noita instance.
 #[poise::command(prefix_command)]
 async fn noita(ctx: Context<'_>) -> Result<(), Error> {
     debug!("Received noita command. Picking channel.");
@@ -153,11 +155,9 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Command to instruct the bot to assign a "channel name" to this Discord channel,
-/// which must be typed into Noita's Twitch channel name to connect.
+/// Command to instruct the bot to stop listening to messages in a channel.
 ///
-/// While this "channel name" is active, all messages in this Discord channel are
-/// passed to the associated Noita instance.
+/// This frees up the Noita channel name as well.
 #[poise::command(prefix_command)]
 async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
     debug!("Received noitastop command. Deleting channel.");
