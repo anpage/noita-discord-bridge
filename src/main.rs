@@ -189,20 +189,20 @@ async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
 async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>, channels: Channels) {
     let mut irc_stream = Framed::new(socket, LinesCodec::new());
     let mut username = "bar".to_string();
-    let mut channel = "#foo".to_string();
+    let mut channel = "foo".to_string();
 
     loop {
         tokio::select! {
         Ok(msg) = rx.recv() => {
             debug!("Message received");
-            if format!("#{}", msg.channel) == channel {
+            if msg.channel == channel {
                 if msg.disconnect {
                     debug!("Killing connection for channel {channel}.");
                     irc_stream.into_inner().shutdown().await.unwrap();
                     break;
                 }
-                debug!("Message is for this channel.");
-                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG {} :{}\r\n", msg.name, channel, msg.message)).await;
+                debug!("(MESSAGE) #{}: {}: {}", msg.channel, msg.name, msg.message);
+                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG #{} :{}\r\n", msg.name, msg.channel, msg.message)).await;
             }
         }
         result = irc_stream.next() => match result {
@@ -219,12 +219,12 @@ async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>, channe
                             },
                             Command::JOIN(chan, ..) => {
                                 if channels.lock().unwrap().values().any(|c| format!("#{c}") == chan) {
-                                    channel = chan;
-                                    if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN {channel}\r\n:{username}.tmi.twitch.tv 353 {username} = {channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} {channel} :End of /NAMES list\r\n")).await {
+                                    channel = chan.trim_start_matches("#").to_string();
+                                    if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN #{channel}\r\n:{username}.tmi.twitch.tv 353 {username} = #{channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} #{channel} :End of /NAMES list\r\n")).await {
                                         error!("error on sending response; error = {:?}", e);
                                     }
                                 } else {
-                                    if let Err(e) = irc_stream.send(format!(":.tmi.twitch.tv NOTICE {channel} :Channel doesn't exist\r\n")).await {
+                                    if let Err(e) = irc_stream.send(format!(":.tmi.twitch.tv NOTICE #{channel} :Channel doesn't exist\r\n")).await {
                                         error!("error on sending response; error = {:?}", e);
                                     }
                                 }
