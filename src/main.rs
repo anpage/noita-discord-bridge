@@ -202,7 +202,7 @@ async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>, channe
                     break;
                 }
                 debug!("(MESSAGE) #{}: {}: {}", msg.channel, msg.name, msg.message);
-                let _ = irc_stream.send(format!("@display-name={}; PRIVMSG #{} :{}\r\n", msg.name, msg.channel, msg.message)).await;
+                let _ = irc_stream.send(format!("@badge-info=;@display-name={}; PRIVMSG #{} :{}\r\n", msg.name, msg.channel, msg.message)).await;
             }
         }
         result = irc_stream.next() => match result {
