@@ -14,8 +14,11 @@ use tokio_util::codec::{Framed, LinesCodec};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
+
+type Channels = Arc<Mutex<HashMap<ChannelId, String>>>;
+
 struct Data {
-    channels: Arc<Mutex<HashMap<ChannelId, String>>>,
+    channels: Channels,
     tx: Sender<UserMessage>,
 }
 
@@ -183,11 +186,7 @@ async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Handler for incoming TCP/IRC connections from Noita. It implements the bare
 /// minimum to fool Noita into thinking that it's connected to Twitch chat.
-async fn process_socket(
-    socket: TcpStream,
-    mut rx: Receiver<UserMessage>,
-    channels: Arc<Mutex<HashMap<ChannelId, String>>>,
-) {
+async fn process_socket(socket: TcpStream, mut rx: Receiver<UserMessage>, channels: Channels) {
     let mut irc_stream = Framed::new(socket, LinesCodec::new());
     let mut username = "bar".to_string();
     let mut channel = "#foo".to_string();
