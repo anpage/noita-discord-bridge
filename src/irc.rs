@@ -4,7 +4,7 @@ use irc_proto::{Command, Message};
 use log::{debug, error, info};
 use poise::futures_util::SinkExt;
 use tokio::{
-    io::{self, AsyncWriteExt},
+    io,
     net::{TcpListener, TcpStream},
     sync::broadcast::Receiver,
     time::sleep,
