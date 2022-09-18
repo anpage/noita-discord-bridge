@@ -3,19 +3,24 @@ use std::sync::{Arc, Mutex};
 
 use poise::serenity_prelude::ChannelId;
 use tokio::io;
-use tokio::sync::broadcast::{self, Sender};
+use tokio::sync::broadcast::Sender;
 
 mod discord;
 mod irc;
 
-pub type Channels = Arc<Mutex<HashMap<ChannelId, String>>>;
+pub struct Channel {
+    /// Name of streaming "channel" created by the Discord bot for Noita to join
+    name: String,
+    /// Broadcast Sender used to pass messages from Discord to associated Noita instances
+    tx: Sender<Signal>,
+}
 
-/// The overall application state
+pub type Channels = Arc<Mutex<HashMap<ChannelId, Channel>>>;
+
+/// Holds persistent state for the Discord bot framework
 pub struct State {
     /// Associations between Discord's ChannelId and IRC channel name
     pub channels: Channels,
-    /// Sender for messages from Discord to Noita
-    pub tx: Sender<Signal>,
 }
 
 #[derive(Clone, Debug)]
@@ -27,26 +32,21 @@ pub enum Signal {
         name: String,
         /// Content of message
         message: String,
-        /// Channel to send the message to
-        channel: String,
     },
     /// The TCP connection should be severed
-    Disconnect { channel: String },
+    Disconnect,
 }
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
     env_logger::init();
 
-    let (tx, _) = broadcast::channel::<Signal>(32);
-    let tx_discord = tx.clone();
-
     let channels = Arc::new(Mutex::new(HashMap::new()));
     let channels_discord = channels.clone();
 
     let (_, result) = tokio::join!(
-        irc::run(tx, channels),
-        discord::build_framework(tx_discord, channels_discord).run()
+        irc::run(channels),
+        discord::build_framework(channels_discord).run()
     );
     result.unwrap();
 

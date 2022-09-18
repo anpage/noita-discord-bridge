@@ -1,24 +1,27 @@
+use std::time::Duration;
+
 use futures::SinkExt;
 use irc_proto::{Command, Message};
 use log::{debug, error, info};
 use tokio::{
     io::{self, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::broadcast::{Receiver, Sender},
+    sync::broadcast::Receiver,
+    time::sleep,
 };
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodec};
 
 use crate::{Channels, Signal};
 
-pub async fn run(tx: Sender<Signal>, channels: Channels) -> io::Result<()> {
+pub async fn run(channels: Channels) -> io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:6667").await?;
     info!("Listening for connections...");
     loop {
         match listener.accept().await {
             Ok((socket, addr)) => {
                 info!("New connection from {}", addr);
-                tokio::spawn(process_socket(socket, tx.subscribe(), channels.clone()));
+                tokio::spawn(process_socket(socket, channels.clone()));
             }
             Err(e) => {
                 error!("Couldn't accept TCP connection: \n{}", e);
@@ -29,28 +32,33 @@ pub async fn run(tx: Sender<Signal>, channels: Channels) -> io::Result<()> {
 
 /// Handler for incoming TCP/IRC connections from Noita. It implements the bare
 /// minimum to fool Noita into thinking that it's connected to Twitch chat.
-pub async fn process_socket(socket: TcpStream, mut rx: Receiver<Signal>, channels: Channels) {
+pub async fn process_socket(socket: TcpStream, channels: Channels) {
     let mut irc_stream = Framed::new(socket, LinesCodec::new());
     let mut username = "_".to_string();
     let mut channel = "_".to_string();
+    let mut rx: Option<Receiver<Signal>> = None;
 
     loop {
         tokio::select! {
-        Ok(signal) = rx.recv() => {
+        Some(Ok(signal)) = async {
+            if let Some(rx) = &mut rx {
+                Some(rx.recv().await)
+            } else {
+                // If we don't have a Receiver from the Discord thread yet, sleep for 30 seconds
+                sleep(Duration::from_secs(30)).await;
+                None
+            }
+        } => {
             debug!("Message received");
             match signal {
-                Signal::UserMessage { name, message, channel: chan } => {
-                    if chan == channel {
-                        debug!("(MESSAGE) #{}: {}: {}", chan, name, message);
-                        let _ = irc_stream.send(format!("@badge-info=;@display-name={}; PRIVMSG #{} :{}\r\n", name, chan, message)).await;
-                    }
+                Signal::UserMessage { name, message } => {
+                    debug!("(MESSAGE) #{}: {}: {}", channel, name, message);
+                    let _ = irc_stream.send(format!("@badge-info=;@display-name={}; PRIVMSG #{} :{}\r\n", name, channel, message)).await;
                 }
-                Signal::Disconnect { channel: chan } => {
-                    if chan == channel {
-                        debug!("Killing connection for channel {channel}.");
-                        irc_stream.into_inner().shutdown().await.unwrap();
-                        break;
-                    }
+                Signal::Disconnect => {
+                    debug!("Killing connection for channel {channel}.");
+                    irc_stream.into_inner().shutdown().await.unwrap();
+                    break;
                 }
             }
         }
@@ -67,8 +75,17 @@ pub async fn process_socket(socket: TcpStream, mut rx: Receiver<Signal>, channel
                                 }
                             },
                             Command::JOIN(chan, ..) => {
-                                if channels.lock().unwrap().values().any(|c| format!("#{c}") == chan) {
-                                    channel = chan.trim_start_matches("#").to_string();
+                                let joined_channel = {
+                                    if let Some(c) = channels.lock().unwrap().values().find(|c| format!("#{}", c.name) == chan) {
+                                        channel = chan.trim_start_matches("#").to_string();
+                                        rx = Some(c.tx.subscribe());
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+
+                                if joined_channel {
                                     if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN #{channel}\r\n:{username}.tmi.twitch.tv 353 {username} = #{channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} #{channel} :End of /NAMES list\r\n")).await {
                                         error!("error on sending response; error = {:?}", e);
                                     }

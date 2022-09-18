@@ -1,16 +1,13 @@
-use crate::{Channels, Signal, State};
+use crate::{Channel, Channels, Signal, State};
 use log::{debug, error};
 use poise::serenity_prelude as serenity;
 use rand::seq::SliceRandom;
-use tokio::sync::broadcast::Sender;
+use tokio::sync::broadcast;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, State, Error>;
 
-pub fn build_framework(
-    tx: Sender<Signal>,
-    channels: Channels,
-) -> poise::FrameworkBuilder<State, Error> {
+pub fn build_framework(channels: Channels) -> poise::FrameworkBuilder<State, Error> {
     poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![noita(), noitastop()],
@@ -28,11 +25,12 @@ pub fn build_framework(
                                 let msg = Signal::UserMessage {
                                     name: new_message.author.name.clone(),
                                     message: new_message.content.clone(),
-                                    channel: c.clone(),
                                 };
                                 debug!("Sending message: {:?}", msg);
-                                if let Err(e) = data.tx.send(msg) {
-                                    error!("Couldn't send message to TCP stream thread: {}", e);
+                                if let Err(e) = c.tx.send(msg) {
+                                    if c.tx.receiver_count() > 0 {
+                                        error!("Couldn't send message to TCP stream thread: {}", e);
+                                    }
                                 }
                             }
                         }
@@ -48,7 +46,7 @@ pub fn build_framework(
             serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
         )
         .user_data_setup(move |_ctx, _ready, _framework| {
-            Box::pin(async move { Ok(State { channels, tx }) })
+            Box::pin(async move { Ok(State { channels }) })
         })
 }
 
@@ -63,20 +61,19 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
 
     let channel_id = ctx.channel_id();
 
-    let mut channel: String;
-    {
+    let channel = {
         let mut channels = ctx.data().channels.lock().unwrap();
         if let Some(c) = channels.get(&channel_id) {
-            channel = c.clone();
+            c.name.clone()
         } else {
             let mut rng = rand::thread_rng();
-            channel = memorable_wordlist::WORDS
+            let mut channel = memorable_wordlist::WORDS
                 .choose(&mut rng)
                 .unwrap()
                 .to_string();
             debug!("Trying channel {}", channel);
 
-            while channels.values().any(|c| c == &channel) {
+            while channels.values().any(|c| c.name == channel) {
                 debug!("Trying channel {}", channel);
                 channel = memorable_wordlist::WORDS
                     .choose(&mut rng)
@@ -84,9 +81,17 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
                     .to_string();
             }
             debug!("Decided on channel {}", channel);
-            channels.insert(channel_id, channel.to_string());
+            let (tx, _) = broadcast::channel::<Signal>(32);
+            channels.insert(
+                channel_id,
+                Channel {
+                    name: channel.to_string(),
+                    tx,
+                },
+            );
+            channel
         }
-    }
+    };
 
     ctx.say(format!("Here's your Noita channel name:\n`{}`", channel))
         .await?;
@@ -105,9 +110,9 @@ async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
         channels.remove(&ctx.channel_id())
     };
     if let Some(c) = deleted {
-        ctx.say(format!("Noita streaming channel `{}` deleted.", c))
+        ctx.say(format!("Noita streaming channel `{}` deleted.", c.name))
             .await?;
-        ctx.data().tx.send(Signal::Disconnect { channel: c })?;
+        c.tx.send(Signal::Disconnect)?;
     } else {
         ctx.say("There isn't currently a Noita streaming channel to stop.")
             .await?;
