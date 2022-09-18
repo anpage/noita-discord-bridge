@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use futures::SinkExt;
 use irc_proto::{Command, Message};
 use log::{debug, error, info};
+use poise::futures_util::SinkExt;
 use tokio::{
     io::{self, AsyncWriteExt},
     net::{TcpListener, TcpStream},
