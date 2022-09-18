@@ -57,7 +57,6 @@ pub async fn process_socket(socket: TcpStream, channels: Channels) {
                 }
                 Signal::Disconnect => {
                     debug!("Killing connection for channel {channel}.");
-                    irc_stream.into_inner().shutdown().await.unwrap();
                     break;
                 }
             }
