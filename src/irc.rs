@@ -31,8 +31,8 @@ pub async fn run(tx: Sender<Signal>, channels: Channels) -> io::Result<()> {
 /// minimum to fool Noita into thinking that it's connected to Twitch chat.
 pub async fn process_socket(socket: TcpStream, mut rx: Receiver<Signal>, channels: Channels) {
     let mut irc_stream = Framed::new(socket, LinesCodec::new());
-    let mut username = "bar".to_string();
-    let mut channel = "foo".to_string();
+    let mut username = "_".to_string();
+    let mut channel = "_".to_string();
 
     loop {
         tokio::select! {
