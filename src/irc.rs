@@ -76,7 +76,7 @@ pub async fn process_socket(socket: TcpStream, channels: Channels) {
                             },
                             Command::JOIN(chan, ..) => {
                                 let joined_channel = {
-                                    if let Some(c) = channels.lock().unwrap().values().find(|c| format!("#{}", c.name) == chan) {
+                                    if let Some(c) = channels.lock().values().find(|c| format!("#{}", c.name) == chan) {
                                         channel = chan.trim_start_matches("#").to_string();
                                         rx = Some(c.tx.subscribe());
                                         true

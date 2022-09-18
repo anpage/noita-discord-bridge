@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use parking_lot::Mutex;
 use poise::serenity_prelude::ChannelId;
 use tokio::io;
 use tokio::sync::broadcast::Sender;

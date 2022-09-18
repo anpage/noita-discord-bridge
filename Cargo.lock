@@ -722,6 +722,7 @@ dependencies = [
  "irc-proto",
  "log",
  "memorable-wordlist",
+ "parking_lot",
  "poise",
  "rand 0.8.5",
  "tokio",

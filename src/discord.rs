@@ -20,7 +20,7 @@ pub fn build_framework(channels: Channels) -> poise::FrameworkBuilder<State, Err
                     debug!("Got an event in listener: {:?}", event.name());
                     match event {
                         poise::Event::Message { new_message } => {
-                            let channels = data.channels.lock().unwrap();
+                            let channels = data.channels.lock();
                             if let Some(c) = channels.get(&new_message.channel_id) {
                                 let msg = Signal::UserMessage {
                                     name: new_message.author.name.clone(),
@@ -62,7 +62,7 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
     let channel_id = ctx.channel_id();
 
     let channel = {
-        let mut channels = ctx.data().channels.lock().unwrap();
+        let mut channels = ctx.data().channels.lock();
         if let Some(c) = channels.get(&channel_id) {
             c.name.clone()
         } else {
@@ -106,7 +106,7 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
 async fn noitastop(ctx: Context<'_>) -> Result<(), Error> {
     debug!("Received noitastop command. Deleting channel.");
     let deleted = {
-        let mut channels = ctx.data().channels.lock().unwrap();
+        let mut channels = ctx.data().channels.lock();
         channels.remove(&ctx.channel_id())
     };
     if let Some(c) = deleted {
