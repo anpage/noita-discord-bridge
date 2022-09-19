@@ -4,7 +4,6 @@ use irc_proto::{Command, Message};
 use log::{debug, error, info};
 use poise::futures_util::SinkExt;
 use tokio::{
-    io,
     net::{TcpListener, TcpStream},
     sync::broadcast::Receiver,
     time::sleep,
@@ -14,18 +13,25 @@ use tokio_util::codec::{Framed, LinesCodec};
 
 use crate::{Channels, Signal};
 
-pub async fn run(channels: Channels) -> io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:6667").await?;
-    info!("Listening for connections...");
-    loop {
-        match listener.accept().await {
-            Ok((socket, addr)) => {
-                info!("New connection from {}", addr);
-                tokio::spawn(process_socket(socket, channels.clone()));
+pub async fn run(channels: Channels) -> Result<(), ()> {
+    match TcpListener::bind("0.0.0.0:6667").await {
+        Ok(listener) => {
+            info!("Listening for connections on 0.0.0.0:6667...");
+            loop {
+                match listener.accept().await {
+                    Ok((socket, addr)) => {
+                        info!("New connection from {}", addr);
+                        tokio::spawn(process_socket(socket, channels.clone()));
+                    }
+                    Err(e) => {
+                        error!("Couldn't accept TCP connection: \n{}", e);
+                    }
+                }
             }
-            Err(e) => {
-                error!("Couldn't accept TCP connection: \n{}", e);
-            }
+        }
+        Err(e) => {
+            error!("Couldn't bind to 0.0.0.0:6667: {e}");
+            Err(())
         }
     }
 }

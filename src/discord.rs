@@ -1,5 +1,5 @@
 use crate::{Channel, Channels, Signal, State};
-use log::{debug, error};
+use log::{debug, error, info};
 use poise::serenity_prelude as serenity;
 use rand::seq::SliceRandom;
 use tokio::sync::broadcast;
@@ -7,8 +7,8 @@ use tokio::sync::broadcast;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, State, Error>;
 
-pub fn build_framework(channels: Channels) -> poise::FrameworkBuilder<State, Error> {
-    poise::Framework::builder()
+pub async fn run_framework(token: String, channels: Channels) -> Result<(), ()> {
+    let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![noita(), noitastop()],
             prefix_options: poise::PrefixFrameworkOptions {
@@ -34,6 +34,9 @@ pub fn build_framework(channels: Channels) -> poise::FrameworkBuilder<State, Err
                                 }
                             }
                         }
+                        poise::Event::Ready { .. } => {
+                            info!("Discord bot ready.");
+                        }
                         _ => {}
                     }
                     Ok(())
@@ -41,13 +44,21 @@ pub fn build_framework(channels: Channels) -> poise::FrameworkBuilder<State, Err
             },
             ..Default::default()
         })
-        .token(std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN"))
+        .token(token)
         .intents(
             serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
         )
         .user_data_setup(move |_ctx, _ready, _framework| {
             Box::pin(async move { Ok(State { channels }) })
-        })
+        });
+
+    match framework.run().await {
+        Ok(r) => Ok(r),
+        Err(e) => {
+            error!("Failed to run Discord bot: {e}");
+            Err(())
+        }
+    }
 }
 
 /// Command to instruct the bot to assign a "channel name" to this Discord channel,
@@ -69,7 +80,7 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
             let mut rng = rand::thread_rng();
             let mut channel = memorable_wordlist::WORDS
                 .choose(&mut rng)
-                .unwrap()
+                .expect("The channel word list is somehow empty")
                 .to_string();
             debug!("Trying channel {}", channel);
 
@@ -77,7 +88,7 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
                 debug!("Trying channel {}", channel);
                 channel = memorable_wordlist::WORDS
                     .choose(&mut rng)
-                    .unwrap()
+                    .expect("The channel word list is somehow empty")
                     .to_string();
             }
             debug!("Decided on channel {}", channel);
