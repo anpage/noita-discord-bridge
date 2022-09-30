@@ -78,18 +78,18 @@ async fn noita(ctx: Context<'_>) -> Result<(), Error> {
             c.name.clone()
         } else {
             let mut rng = rand::thread_rng();
-            let mut channel = memorable_wordlist::WORDS
+            let mut channel = (*memorable_wordlist::WORDS
                 .choose(&mut rng)
-                .expect("The channel word list is somehow empty")
-                .to_string();
+                .expect("The channel word list is somehow empty"))
+            .to_string();
             debug!("Trying channel {}", channel);
 
             while channels.values().any(|c| c.name == channel) {
                 debug!("Trying channel {}", channel);
-                channel = memorable_wordlist::WORDS
+                channel = (*memorable_wordlist::WORDS
                     .choose(&mut rng)
-                    .expect("The channel word list is somehow empty")
-                    .to_string();
+                    .expect("The channel word list is somehow empty"))
+                .to_string();
             }
             debug!("Decided on channel {}", channel);
             let (tx, _) = broadcast::channel::<Signal>(32);

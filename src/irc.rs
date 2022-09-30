@@ -59,7 +59,9 @@ pub async fn process_socket(socket: TcpStream, channels: Channels) {
             match signal {
                 Signal::UserMessage { name, message } => {
                     debug!("(MESSAGE) #{}: {}: {}", channel, name, message);
-                    let _ = irc_stream.send(format!("@badge-info=;@display-name={}; PRIVMSG #{} :{}\r\n", name, channel, message)).await;
+                    if let Err(e) = irc_stream.send(format!("@badge-info=;@display-name={}; PRIVMSG #{} :{}\r\n", name, channel, message)).await {
+                        error!("Problem sending IRC message to Noita: {e}");
+                    }
                 }
                 Signal::Disconnect => {
                     debug!("Killing connection for channel {channel}.");
