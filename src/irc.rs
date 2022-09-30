@@ -82,7 +82,7 @@ pub async fn process_socket(socket: TcpStream, channels: Channels) {
                             Command::JOIN(chan, ..) => {
                                 let joined_channel = {
                                     if let Some(c) = channels.lock().values().find(|c| format!("#{}", c.name) == chan) {
-                                        channel = chan.trim_start_matches("#").to_string();
+                                        channel = chan.trim_start_matches('#').to_string();
                                         rx = Some(c.tx.subscribe());
                                         true
                                     } else {
@@ -94,10 +94,8 @@ pub async fn process_socket(socket: TcpStream, channels: Channels) {
                                     if let Err(e) = irc_stream.send(format!(":{username}!{username}@{username}.tmi.twitch.tv JOIN #{channel}\r\n:{username}.tmi.twitch.tv 353 {username} = #{channel} :{username}\r\n:{username}.tmi.twitch.tv 366 {username} #{channel} :End of /NAMES list\r\n")).await {
                                         error!("error on sending response; error = {:?}", e);
                                     }
-                                } else {
-                                    if let Err(e) = irc_stream.send(format!(":.tmi.twitch.tv NOTICE #{channel} :Channel doesn't exist\r\n")).await {
-                                        error!("error on sending response; error = {:?}", e);
-                                    }
+                                } else if let Err(e) = irc_stream.send(format!(":.tmi.twitch.tv NOTICE #{channel} :Channel doesn't exist\r\n")).await {
+                                    error!("error on sending response; error = {:?}", e);
                                 }
                             },
                             _ => {

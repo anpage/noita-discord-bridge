@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -52,8 +54,7 @@ async fn main() -> io::Result<()> {
     let channels_discord = channels.clone();
 
     let token = {
-        let token = std::env::var("DISCORD_TOKEN");
-        if let Ok(token) = token {
+        if let Ok(token) = std::env::var("DISCORD_TOKEN") {
             token
         } else {
             error!("DISCORD_TOKEN is missing from your environment. Please provide one now:");
